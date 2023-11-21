@@ -3,8 +3,9 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include "ARP.h"
+#include "pch.h"
 #include "EthernetLayer.h"
+#include "BaseLayer.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE

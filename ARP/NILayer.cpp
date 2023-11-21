@@ -1,7 +1,7 @@
 // NILayer.cpp: implementation of the CNILayer class.
 //
 //////////////////////////////////////////////////////////////////////
-
+#include "pch.h"
 #include "stdafx.h"
 #include "ARP.h"
 #include "NILayer.h"

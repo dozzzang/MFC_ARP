@@ -1,6 +1,8 @@
 // BaseLayer.h: interface for the CBaseLayer class.
 //
 //////////////////////////////////////////////////////////////////////
+#include "pch.h"
+#include"stdafx.h"
 
 #if !defined(AFX_BASELAYER_H__041C5A07_23A9_4CBC_970B_8743460A7DA9__INCLUDED_)
 #define AFX_BASELAYER_H__041C5A07_23A9_4CBC_970B_8743460A7DA9__INCLUDED_
