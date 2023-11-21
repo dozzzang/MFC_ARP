@@ -10,6 +10,7 @@
 #endif // _MSC_VER > 1000
 
 #include "BaseLayer.h"
+#include "pch.h"
 #include <pcap.h>
 #include <Packet32.h>
 
