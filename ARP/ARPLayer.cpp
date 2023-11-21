@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "stdafx.h"
 #include "ARP.h"
 #include "ARPLayer.h"
@@ -5,143 +6,149 @@
 
 #ifdef _DEBUG
 #undef THIS_FILE
-static char THIS_FILE[]=__FILE__;
+static char THIS_FILE[] = __FILE__;
 #define new DEBUG_NEW
 #endif
 
-CARPLayer::CARPLayer( char* pName)
-: CBaseLayer( pName )
+CARPLayer::CARPLayer(char* pName)
+    : CBaseLayer(pName)
 {
-	ResetHeader();
-	arp_table.clear();
+    ResetHeader();
 }
 
-CARPLayer::~CARPLayer()
-{
+CARPLayer::~CARPLayer() {}
+
+void CARPLayer::ResetHeader() {
+    m_sHeader.arp_hardType = 0x0000;
+    m_sHeader.arp_protocolType = 0x0000;
+    m_sHeader.arp_hardLength = MAC_ADDR_SIZE;
+    m_sHeader.arp_protocolLength = IP_ADDR_SIZE;
+    m_sHeader.arp_option = 0x0000;
+    memset(m_sHeader.arp_HardSrcAddr, 0, MAC_ADDR_SIZE);
+    memset(m_sHeader.arp_ProtcolSrcAddr, 0, IP_ADDR_SIZE);
+    memset(m_sHeader.arp_HardDstaddr, 0, MAC_ADDR_SIZE);
+    memset(m_sHeader.arp_PorotocolDstAddr, 0, IP_ADDR_SIZE);
 }
 
-void CARPLayer::ResetHeader()
-{
-	m_sHeader.arp_hardType = 0x0000;
-	m_sHeader.arp_protocolType = 0x0000;
-	m_sHeader.arp_hardLength = 0x06;
-	m_sHeader.arp_protocolLength = 0x04;
-	m_sHeader.arp_option = 0x0000;
-	memset(m_sHeader.arp_srcEtherAddress.addrs, 0, 6);
-	memset(m_sHeader.arp_srcIPAddress.addrs, 0, 4);
-	memset(m_sHeader.arp_dstEtherAddress.addrs, 0, 6);
-	memset(m_sHeader.arp_dstIPAddress.addrs, 0, 4);
-}
+BOOL CARPLayer::Send(unsigned char* ppayload, int nlength) {
+    // Cast payload to IP_HEADER to access IP addresses
+    PIP_HEADER ip_header = reinterpret_cast<PIP_HEADER>(ppayload);
+    std::string dst_ip_str(reinterpret_cast<char*>(ip_header->ip_DstAddr), IP_ADDR_SIZE);
 
-BOOL CARPLayer::Send(unsigned char* ppayload, int nlength)
-{
+    // Check if the destination IP is already in the ARP cache
+    auto iter = m_arpTable.find(dst_ip_str);
+    if (iter != m_arpTable.end()) {
+        // If it's incomplete, we don't process it further
+        if (iter->second.status == FALSE) {
+            AfxMessageBox(_T("Already In Cache!"));
+            return TRUE;
+        }
+    }
+    else {
+        // Add a new ARP cache entry if it does not exist
+        LARP_NODE newNode;
+        memcpy(newNode.prot_addr, ip_header->ip_DstAddr, IP_ADDR_SIZE);
+        memset(newNode.hard_addr, 0xff, MAC_ADDR_SIZE); // Broadcast address
+        newNode.status = FALSE; // Incomplete entry
+        newNode.Time = time(nullptr); // Current time
+        m_arpTable[dst_ip_str] = newNode;
+    }
 
-	BOOL found = false;
-	for(unsigned int i=0; i<arp_table.size(); i++) {
-		if(get<1>(arp_table[i]) == GetDstIPAddress()) {
-			SetEnetDstAddress(get<0>(arp_table[i]));
-			found = true;
-			break;
-		}
-	}
+    // Set ARP header
+    SetSrcAddress(m_myMac, ip_header->ip_SrcAddr);
+    SetDstAddress(broadcastAddr, ip_header->ip_DstAddr);
+    SetOption(ARP_OP_REQUEST);
 
-	BOOL bSuccess = FALSE;
-	unsigned char ARP_BROADCAST[6] = {0xff, };
-	if(!found) { // Send ARP Request
-		tempPayload = make_pair(ppayload,nlength);
-
-		// Cache table �� �߰�.
-		arp_table.push_back(make_tuple( ARP_BROADCAST, GetDstIPAddress() , 3, FALSE));
-
-		SetOption(ntohs(ARP_OPCODE_REQUEST));
-		SetEnetDstAddress(ARP_BROADCAST);
-		bSuccess = mp_UnderLayer->Send((unsigned char*)&m_sHeader, nlength);
-	} else {
-		((CEthernetLayer *)mp_UnderLayer)->SetEnetDstAddress(GetEnetDstAddress());
-		bSuccess = mp_UnderLayer->Send(ppayload, nlength);
-	}
-
-    return true;
+    // Send the ARP request
+    return mp_UnderLayer->Send(reinterpret_cast<unsigned char*>(&m_sHeader), sizeof(ARP_HEADER));
 }
 
 BOOL CARPLayer::Receive(unsigned char* ppayload) {
-	PARPLayer_HEADER pFrame = (PARPLayer_HEADER)ppayload;
-	BOOL bSuccess = FALSE;
+    PARP_HEADER arp_header = reinterpret_cast<PARP_HEADER>(ppayload);
 
-	if (ntohs(pFrame->arp_option) == ARP_OPCODE_REQUEST) {
-		if (memcmp(pFrame->arp_dstIPAddress.addrs, m_sHeader.arp_srcIPAddress.addrs, 4) == 0) {
-			// 대상 주소가 로컬 주소와 일치
-			SwapAddresses();
-			bSuccess = mp_UnderLayer->Send((unsigned char*)&m_sHeader, sizeof(m_sHeader));
-		}
-		// 대상 주소가 로컬 주소와 일치하지 않으면 패킷 폐기
-	}
+    // Process ARP request
+    if (arp_header->arp_option == ARP_OP_REQUEST) {
+        // Check if the destination IP is ours
+        if (memcmp(arp_header->arp_ProtocolDstAddr, myIp, IP_ADDR_SIZE) == 0) {
+            // Respond to the ARP request
+            SetDstAddress(arp_header->arp_HardSrcAddr, arp_header->arp_ProtocolSrcAddr);
+            SetSrcAddress(myMac, myIp);
+            SetOption(ARP_OP_REPLY);
+            SwapAddresses();
 
-	return bSuccess;
+            return mp_UnderLayer->Send(reinterpret_cast<unsigned char*>(arp_header), sizeof(ARP_HEADER));
+        }
+    }
+    // Process ARP reply
+    else if (arp_header->arp_option == ARP_OP_REPLY) {
+        std::string src_ip_str(reinterpret_cast<char*>(arp_header->arp_ProtocolSrcAddr), IP_ADDR_SIZE);
+        auto iter = m_arpTable.find(src_ip_str);
+        if (iter != m_arpTable.end()) {
+            // Update the ARP cache entry
+            memcpy(iter->second.hard_addr, arp_header->arp_HardSrcAddr, MAC_ADDR_SIZE);
+            iter->second.status = TRUE;
+            iter->second.Time = time(nullptr);
+        }
+    }
+
+    return TRUE;
+}
+void CARPLayer::SetSrcAddress(const unsigned char macAddr[], const unsigned char ipAddr[]) {
+    memcpy(m_sHeader.arp_HardSrcAddr, macAddr, MAC_ADDR_SIZE);
+    memcpy(m_sHeader.arp_ProtcolSrcAddr, ipAddr, IP_ADDR_SIZE);
 }
 
-void CARPLayer::SetEnetSrcAddress(unsigned char *pAddress)
-{
-	memcpy(&m_sHeader.arp_srcEtherAddress.addrs, pAddress, 6);
-}
-
-void CARPLayer::SetEnetDstAddress(unsigned char *pAddress)
-{
-	memcpy(&m_sHeader.arp_dstEtherAddress.addrs, pAddress, 6);
-}
-
-void CARPLayer::SetSrcIPAddress(unsigned char* src_ip)
-{
-	memcpy(m_sHeader.arp_srcIPAddress.addrs, src_ip, 4);
-}
-
-void CARPLayer::SetDstIPAddress(unsigned char* dst_ip)
-{
-	memcpy(m_sHeader.arp_dstIPAddress.addrs, dst_ip, 4);
-}
-
-void CARPLayer::SetOption(unsigned int arp_option)
-{
-	m_sHeader.arp_option = arp_option;
-}
-
-unsigned char* CARPLayer::GetEnetSrcAddress()
-{
-	return m_sHeader.arp_srcEtherAddress.addrs;
-}
-
-unsigned char* CARPLayer::GetEnetDstAddress()
-{
-	return m_sHeader.arp_dstEtherAddress.addrs;
-}
-
-unsigned char* CARPLayer::GetSrcIPAddress()
-{
-	return m_sHeader.arp_srcIPAddress.addrs;
-}
-
-unsigned char* CARPLayer::GetDstIPAddress()
-{
-	return m_sHeader.arp_dstIPAddress.addrs;
-}
-
-unsigned int CARPLayer::GetOption()
-{
-	return m_sHeader.arp_option;
+void CARPLayer::SetDstAddress(const unsigned char macAddr[], const unsigned char ipAddr[]) {
+    memcpy(m_sHeader.arp_HardDstaddr, macAddr, MAC_ADDR_SIZE);
+    memcpy(m_sHeader.arp_PorotocolDstAddr, ipAddr, IP_ADDR_SIZE);
 }
 void CARPLayer::SwapAddresses() {
-	// 교환: 송신자 및 수신자의 하드웨어 주소
-	unsigned char tempHardwareAddr[6];
-	memcpy(tempHardwareAddr, m_sHeader.arp_srcEtherAddress.addrs, 6);
-	memcpy(m_sHeader.arp_srcEtherAddress.addrs, m_sHeader.arp_dstEtherAddress.addrs, 6);
-	memcpy(m_sHeader.arp_dstEtherAddress.addrs, tempHardwareAddr, 6);
+    unsigned char tempMac[MAC_ADDR_SIZE];
+    unsigned char tempIp[IP_ADDR_SIZE];
 
-	// 교환: 송신자 및 수신자의 프로토콜 주소
-	unsigned char tempProtocolAddr[4];
-	memcpy(tempProtocolAddr, m_sHeader.arp_srcIPAddress.addrs, 4);
-	memcpy(m_sHeader.arp_srcIPAddress.addrs, m_sHeader.arp_dstIPAddress.addrs, 4);
-	memcpy(m_sHeader.arp_dstIPAddress.addrs, tempProtocolAddr, 4);
+    // Swap MAC addresses
+    memcpy(tempMac, m_sHeader.arp_HardSrcAddr, MAC_ADDR_SIZE);
+    memcpy(m_sHeader.arp_HardSrcAddr, m_sHeader.arp_HardDstaddr, MAC_ADDR_SIZE);
+    memcpy(m_sHeader.arp_HardDstaddr, tempMac, MAC_ADDR_SIZE);
 
-	// Opcode를 ARP 응답으로 설정
-	SetOption(htons(ARP_OPCODE_REPLY));
+    // Swap IP addresses
+    memcpy(tempIp, m_sHeader.arp_ProtcolSrcAddr, IP_ADDR_SIZE);
+    memcpy(m_sHeader.arp_ProtcolSrcAddr, m_sHeader.arp_PorotocolDstAddr, IP_ADDR_SIZE);
+    memcpy(m_sHeader.arp_PorotocolDstAddr, tempIp, IP_ADDR_SIZE);
+}
+BOOL CARPLayer::checkAddressWithMyIp(const unsigned char dstip[]) {
+    return memcmp(dstip, myIp, IP_ADDR_SIZE) == 0;
+}
+std::vector<CARPLayer::LARP_NODE> CARPLayer::getTable() {
+    std::vector<LARP_NODE> table;
+    for (const auto& entry : m_arpTable) {
+        table.push_back(entry.second);
+    }
+    return table;
+}
+void CARPLayer::addARPEntry(const CString& ip_key, const LARP_NODE& node) {
+    // Add or update the ARP entry in the ARP table
+    m_arpTable[ip_key] = node;
+    // Assuming you want to update the timestamp of the entry as well
+    m_arpTable[ip_key].Time = CTime::GetCurrentTime();
+}
+
+void CARPLayer::deleteAllARPEntry() {
+    // Clear the entire ARP table
+    m_arpTable.clear();
+}
+
+void CARPLayer::deleteARPEntry(const CString& target) {
+    // Delete a specific entry from the ARP table
+    m_arpTable.erase(target);
+}
+
+
+
+void CARPLayer::SetOption(unsigned int arp_option) {
+    m_sHeader.arp_option = htons(static_cast<unsigned short>(arp_option));
+}
+
+unsigned int CARPLayer::GetOption() {
+    return ntohs(m_sHeader.arp_option);
 }
