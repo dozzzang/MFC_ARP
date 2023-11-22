@@ -73,7 +73,7 @@ public:
 	void setDlgMac(CString enet);
 
 	BOOL Send(unsigned char* ppayload, int nlength);
-	BOOL Receive(unsigned char* ppayload);
+	BOOL Receive(unsigned char* ppayload,int type);
 
 	// MAC, IP, timer, complete/incomplete
 	static std::unordered_map<CString, LARP_NODE> m_arpTable;

@@ -11,37 +11,37 @@
 
 #include "BaseLayer.h"
 #include "pch.h"
-class CEthernetLayer 
-: public CBaseLayer
+
+class CEthernetLayer
+	: public CBaseLayer
 {
 private:
-	inline void		ResetHeader( );
+	inline void		ResetHeader();
 
 public:
-	CEthernetLayer( char* pName );
+	BOOL			Receive(unsigned char* ppayload);
+	BOOL			Send(unsigned char* ppayload, int nlength, unsigned short type);
+	void			SetDestinAddress(unsigned char* pAddress);
+	void			SetSourceAddress(unsigned char* pAddress);
+	unsigned char* GetDestinAddress();
+	unsigned char* GetSourceAddress();
+
+	CEthernetLayer(char* pName);
 	virtual ~CEthernetLayer();
-
-	void			StartThread();
-
-	BOOL			Receive( unsigned char* ppayload ) ;
-	BOOL			Send( unsigned char* ppayload, int nlength );
-
-	void			SetEnetDstAddress( unsigned char* pAddress );
-	void			SetEnetSrcAddress( unsigned char* pAddress );
-	unsigned char*	GetEnetDstAddress( );
-	unsigned char*	GetEnetSrcAddress( );
 
 	typedef struct _ETHERNET_HEADER {
 
-		ETHERNET_ADDR	enet_dstaddr;		// destination address of ethernet layer
-		ETHERNET_ADDR	enet_srcaddr;		// source address of ethernet layer
-		unsigned short	enet_type;			// type of ethernet layer
-		unsigned char	enet_data[ ETHER_MAX_DATA_SIZE ] ; // frame data
+		unsigned char	enet_dstaddr[6];		// destination address of ethernet layer
+		unsigned char	enet_srcaddr[6];		// source address of ethernet layer
+		unsigned short	enet_type;		// type of ethernet layer
+		unsigned char	enet_data[ETHER_MAX_DATA_SIZE]; // frame data
 
-	} ETHERNET_HEADER, *PETHERNET_HEADER ;
+	} ETHERNET_HEADER, * PETHERNET_HEADER;
 
 protected:
-	ETHERNET_HEADER	m_sHeader ;
+	ETHERNET_HEADER	m_sHeader;
+	static bool AddressEquals(unsigned char* addr1, unsigned char* addr2);
+	static bool IsBroadcast(unsigned char* address);
 };
 
-#endif // !defined(AFX_ETHERNETLAYER_H__7857C9C2_B459_4DC8_B9B3_4E6C8B587B29__INCLUDED_)
+#endif // !defined(AFX_ETHERNETLAYER_H__7857C9C2_	B459_4DC8_B9B3_4E6C8B587B29__INCLUDED_)

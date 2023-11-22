@@ -22,8 +22,8 @@ CARPLayer::~CARPLayer() {}
 std::unordered_map<CString, CARPLayer::LARP_NODE> CARPLayer::m_arpTable;
 
 void CARPLayer::ResetHeader() {
-    m_sHeader.arp_hardType = 0x0000;    //Ethernet 0x0001
-    m_sHeader.arp_protocolType = 0x0000;    //IP 0x0800
+    m_sHeader.arp_hardType = 0x0001;    //Ethernet 0x0001 based on layer structure
+    m_sHeader.arp_protocolType = ARP_IP_TYPE;    //IP 0x0800 base on layer structrue
     m_sHeader.arp_hardLength = ENET_ADDR_SIZE;
     m_sHeader.arp_protocolLength = IP_ADDR_SIZE;
     m_sHeader.arp_option = 0x0000;  //Request 1,Reply 2
@@ -61,12 +61,12 @@ BOOL CARPLayer::Send(unsigned char* ppayload, int nlength) {
         SetDstAddress(broadcastAddr, ip_header->ip_DstAddr);  // Broadcast address
         SetOption(ARP_OPCODE_REQUEST);
 
-        return mp_UnderLayer->Send((unsigned char*)&m_sHeader, sizeof(ARP_HEADER));
+        return mp_UnderLayer->Send((unsigned char*)&m_sHeader, sizeof(ARP_HEADER),ETHER_ARP_TYPE);
     }
 }
 
 
-BOOL CARPLayer::Receive(unsigned char* ppayload) {
+BOOL CARPLayer::Receive(unsigned char* ppayload,int type) {
     PARP_HEADER arp_header = (PARP_HEADER)ppayload; // C-style cast for the ARP header
 
     // Process ARP request
@@ -78,7 +78,7 @@ BOOL CARPLayer::Receive(unsigned char* ppayload) {
             SetSrcAddress(m_myMac, m_myIp); // Perhaps In Dlg
             SetOption(ARP_OPCODE_REPLY);
         }
-        return mp_UnderLayer->Send((unsigned char*)arp_header, sizeof(ARP_HEADER));
+        return mp_UnderLayer->Send((unsigned char*)arp_header, sizeof(ARP_HEADER),type);
     }
     // Process ARP reply
     else if (arp_header->arp_option == ARP_OPCODE_REPLY) {
