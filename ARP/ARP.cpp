@@ -1,7 +1,7 @@
 
 // ARP.cpp : ���� ���α׷��� ���� Ŭ���� ������ �����մϴ�.
 //
-
+#include "pch.h"
 #include "stdafx.h"
 #include "ARP.h"
 #include "ARPDlg.h"
